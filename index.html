@@ -766,7 +766,7 @@ function cf(r, name, col) { return colField(r, name, col); }
 function groupByAnuncio(rows) {
   const map = new Map();
   rows.forEach(r => {
-    const key = cf(r,'Código Anuncio','F') || '(sin código)';
+    const key = cf(r,'Código Anuncio','G') || '(sin código)';
     if (!map.has(key)) {
       map.set(key, {
         'Código Anuncio': key,
@@ -1044,7 +1044,7 @@ function filtrarAnuncios() {
   const q = (document.getElementById('anunciosSearch').value || '').toLowerCase();
   const base = FILTERED;
   const resultado = q ? base.filter(r => {
-    const codigo = (colField(r,'Código Anuncio','F') || '').toLowerCase();
+    const codigo = (colField(r,'Código Anuncio','G') || '').toLowerCase();
     const camp   = (colField(r,'Campaña','H') || '').toLowerCase();
     const conj   = (colField(r,'Conjunto de Anuncios','I') || colField(r,'Conjunto','I') || '').toLowerCase();
     return codigo.includes(q) || camp.includes(q) || conj.includes(q);
@@ -1061,7 +1061,7 @@ function renderTablaAnuncios(rows) {
   }
   const html = rows.map(r => {
     const thumb = r['Miniatura'] || colField(r,'Miniatura','AN');
-    const codigo  = r['Código Anuncio'] || colField(r,'Código Anuncio','F') || '—';
+    const codigo  = r['Código Anuncio'] || colField(r,'Código Anuncio','G') || '—';
     const conj    = r['Conjunto'] || colField(r,'Conjunto de Anuncios','I') || '—';
     const camp    = r['Campaña'] || colField(r,'Campaña','H') || '—';
     const estado  = r['Estado'] || colField(r,'Estado','L') || '';
