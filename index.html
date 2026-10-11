@@ -522,8 +522,9 @@ main { flex: 1; overflow-y: auto; padding: 20px; }
 // ---------- CONFIG ----------
 const CONFIG_KEY = 'mili_os_config';
 // URLs hardcodeadas del Sheet de Mili Digital Tips OS
-const SHEET_ID_PUBLICADO = '2PACX-1vRhhHfr0ByI175iEeIFsswJZJxzrRooEvdElgj8cMIutRSdr2pZOHR_vIHYjoXtRyhys0JwgSt_ZviK';
-const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv`;
+// ID real del spreadsheet (de la URL /d/ESTE_ID/)
+const SHEET_ID_REAL = '1ThqlXcmExFC07iO7jwQxeZ6mw7yHwKVDedpvcandGeg';
+const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID_REAL}/gviz/tq?tqx=out:csv`;
 let CONFIG = { sheetUrl: DEFAULT_SHEET_URL };
 let DATA = { anuncios: [], presupuesto: [] };
 let FILTERED = [];
