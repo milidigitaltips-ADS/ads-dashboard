@@ -630,34 +630,54 @@ function csvUrlToVizQuery(csvUrl) {
 
 async function fetchCSV(url) {
   const errors = [];
+  const gidMatch = url.match(/gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
 
-  // Método 1: Google Visualization API (permite CORS nativamente)
+  // Método 1: Google Visualization API — permite CORS nativamente
   try {
-    const vizUrl = csvUrlToVizQuery(url);
-    const r = await fetch(vizUrl, { signal: AbortSignal.timeout(12000) });
+    const vizUrl = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}`;
+    const r = await fetch(vizUrl, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
     if (r.ok) {
       const text = await r.text();
-      if (text && text.includes(',')) return text;
+      if (text && text.trim().length > 10) return text;
     }
   } catch(e) { errors.push('viz: ' + e.message); }
 
-  // Método 2: corsproxy.io
+  // Método 2: URL directa (funciona si el servidor no bloquea CORS)
   try {
-    const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+    const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(12000) });
     if (r.ok) {
       const text = await r.text();
-      if (text && text.includes(',')) return text;
+      if (text && text.trim().length > 10) return text;
+    }
+  } catch(e) { errors.push('direct: ' + e.message); }
+
+  // Método 3: corsproxy.io
+  try {
+    const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url), { cache: 'no-store', signal: AbortSignal.timeout(12000) });
+    if (r.ok) {
+      const text = await r.text();
+      if (text && text.trim().length > 10) return text;
     }
   } catch(e) { errors.push('corsproxy: ' + e.message); }
 
-  // Método 3: allorigins
+  // Método 4: allorigins
   try {
-    const r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), { signal: AbortSignal.timeout(10000) });
+    const r = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), { cache: 'no-store', signal: AbortSignal.timeout(12000) });
     if (r.ok) {
       const text = await r.text();
-      if (text && text.includes(',')) return text;
+      if (text && text.trim().length > 10) return text;
     }
   } catch(e) { errors.push('allorigins: ' + e.message); }
+
+  // Método 5: thingproxy
+  try {
+    const r = await fetch('https://thingproxy.freeboard.io/fetch/' + url, { cache: 'no-store', signal: AbortSignal.timeout(12000) });
+    if (r.ok) {
+      const text = await r.text();
+      if (text && text.trim().length > 10) return text;
+    }
+  } catch(e) { errors.push('thingproxy: ' + e.message); }
 
   throw new Error('Sin datos. ¿El Sheet está publicado como CSV público?\n' + errors.join(' | '));
 }
