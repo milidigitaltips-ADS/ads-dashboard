@@ -637,14 +637,38 @@ async function fetchSheet(sheetName) {
     'Presupuesto Auto': SHEET_GIDS.presupuesto
   };
   const gid = gidMap[sheetName] || '0';
+  const encodedName = encodeURIComponent(sheetName);
+  const opts = { cache: 'no-store', signal: AbortSignal.timeout(15000) };
 
-  // gviz/tq con gid= — funciona con CORS desde GitHub Pages
-  const url = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  // Método 1: pub con nombre de pestaña
+  try {
+    const url1 = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&single=true&sheet=${encodedName}`;
+    const r = await fetch(url1, opts);
+    if (r.ok) { const t = await r.text(); if (t && t.trim().length > 5) return parseCSV(t); }
+  } catch(e) {}
 
-  const resp = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' al cargar ' + sheetName);
-  const text = await resp.text();
-  return parseCSV(text);
+  // Método 2: gviz/tq con nombre de pestaña
+  try {
+    const url2 = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv&sheet=${encodedName}`;
+    const r = await fetch(url2, opts);
+    if (r.ok) { const t = await r.text(); if (t && t.trim().length > 5) return parseCSV(t); }
+  } catch(e) {}
+
+  // Método 3: gviz/tq con GID numérico
+  try {
+    const url3 = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv&gid=${gid}`;
+    const r = await fetch(url3, opts);
+    if (r.ok) { const t = await r.text(); if (t && t.trim().length > 5) return parseCSV(t); }
+  } catch(e) {}
+
+  // Método 4: pub con GID numérico
+  try {
+    const url4 = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}`;
+    const r = await fetch(url4, opts);
+    if (r.ok) { const t = await r.text(); if (t && t.trim().length > 5) return parseCSV(t); }
+  } catch(e) {}
+
+  throw new Error('No se pudo cargar ' + sheetName + '. Verificá que la hoja esté publicada.');
 }
 
 // ---------- CSV PARSER ----------
