@@ -528,7 +528,7 @@ const SHEET_GIDS = {
   anuncios:    '750518865',
   presupuesto: '1696674877'
 };
-const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv`;
+const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv`;
 let CONFIG = { sheetUrl: DEFAULT_SHEET_URL };
 let DATA = { anuncios: [], presupuesto: [] };
 let FILTERED = [];
@@ -632,17 +632,16 @@ async function cargarDatos() {
 }
 
 async function fetchSheet(sheetName) {
-  // Mapear nombre de pestaña a GID
   const gidMap = {
-    'Anuncios':        SHEET_GIDS.anuncios,
+    'Anuncios':         SHEET_GIDS.anuncios,
     'Presupuesto Auto': SHEET_GIDS.presupuesto
   };
   const gid = gidMap[sheetName] || '0';
 
-  // Construir URL usando el formato pub?output=csv&gid=GID (funciona con el ID publicado)
-  const base = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}`;
+  // gviz/tq con gid= — funciona con CORS desde GitHub Pages
+  const url = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/gviz/tq?tqx=out:csv&gid=${gid}`;
 
-  const resp = await fetch(base, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+  const resp = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
   if (!resp.ok) throw new Error('HTTP ' + resp.status + ' al cargar ' + sheetName);
   const text = await resp.text();
   return parseCSV(text);
