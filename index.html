@@ -752,41 +752,77 @@ function colField(row, ...candidates) {
   return '';
 }
 
+// Mapeo de columnas nuevo (H-AN)
+// H=Campaña, I=Conjunto, J=Entrega, K=Presupuesto, L=Estado
+// M=Alcance, N=Impresiones, O=Frecuencia, P=Resultados, Q=CostoPorResultado
+// R=Gasto, S=Clics, T=ClicsSalientes, U=CPC, V=CTR, W=CPM
+// X=Visitas, Y=CostoPorVisita, Z=%VisitasVsClics
+// AA=PagosIniciados, AB=CostoPorPago, AC=%Persuasion
+// AD=Compras, AE=CostoPorCompra, AF=ValorConversion, AG=%Conversion, AH=ROAS
+// AI=Video50, AJ=Video75, AK=Video100, AL=Mensajes, AM=Leads, AN=Miniatura
+function cf(r, name, col) { return colField(r, name, col); }
+
 // Agrupa filas por Código Anuncio y suma métricas numéricas
 function groupByAnuncio(rows) {
   const map = new Map();
   rows.forEach(r => {
-    const key = colField(r,'Código Anuncio','F') || '(sin código)';
+    const key = cf(r,'Código Anuncio','F') || '(sin código)';
     if (!map.has(key)) {
       map.set(key, {
         'Código Anuncio': key,
-        'Cliente':        colField(r,'Cliente','D'),
-        'Responsable':    colField(r,'Responsable','E'),
-        'Conjunto':       colField(r,'Conjunto','G'),
-        'Campaña':        colField(r,'Campaña','H'),
-        'Estado':         colField(r,'Estado','J'),
-        'Miniatura':      colField(r,'Miniatura','X'),
-        'Gasto':       0, 'Impresiones': 0, 'Alcance': 0,
-        'Clics':       0, 'Ventas': 0,      'Mensajes': 0, 'Leads': 0,
+        'Cliente':     cf(r,'Cliente','D'),
+        'Responsable': cf(r,'Responsable','E'),
+        'Campaña':     cf(r,'Campaña','H'),
+        'Conjunto':    cf(r,'Conjunto de Anuncios','I') || cf(r,'Conjunto','I'),
+        'Entrega':     cf(r,'Entrega','J'),
+        'Estado':      cf(r,'Estado','L'),
+        'Miniatura':   cf(r,'Miniatura','AN'),
+        'Gasto': 0, 'Impresiones': 0, 'Alcance': 0, 'Frecuencia': 0,
+        'Clics': 0, 'ClicsSalientes': 0, 'Visitas': 0,
+        'Resultados': 0, 'PagosIniciados': 0,
+        'Compras': 0, 'ValorConversion': 0,
+        'Mensajes': 0, 'Leads': 0,
+        'Video50': 0, 'Video75': 0, 'Video100': 0,
+        '_rows': 0,
       });
     }
     const g = map.get(key);
-    g['Gasto']        += n(colField(r,'Gasto','K'));
-    g['Impresiones']  += ni(colField(r,'Impresiones','M'));
-    g['Alcance']      += ni(colField(r,'Alcance','N'));
-    g['Clics']        += ni(colField(r,'Clics','P'));
-    g['Ventas']       += n(colField(r,'Ventas','Q'));
-    g['Mensajes']     += n(colField(r,'Mensajes','R'));
-    g['Leads']        += n(colField(r,'Leads','S'));
-    // Actualizar estado: si alguna fila está ACTIVE, el anuncio está activo
-    if ((colField(r,'Estado','J')||'').toUpperCase() === 'ACTIVE') g['Estado'] = 'ACTIVE';
+    g['Gasto']          += n(cf(r,'Importe Gastado','R') || cf(r,'Gasto','R'));
+    g['Impresiones']    += ni(cf(r,'Impresiones','N'));
+    g['Alcance']        += ni(cf(r,'Alcance','M'));
+    g['Clics']          += ni(cf(r,'Clics en el Enlace','S') || cf(r,'Clics','S'));
+    g['ClicsSalientes'] += ni(cf(r,'Clics Salientes','T'));
+    g['Visitas']        += ni(cf(r,'Visitas Página Destino','X') || cf(r,'Visitas','X'));
+    g['Resultados']     += n(cf(r,'Resultados','P'));
+    g['PagosIniciados'] += n(cf(r,'Pagos Iniciados','AA'));
+    g['Compras']        += n(cf(r,'Compras','AD'));
+    g['ValorConversion']+= n(cf(r,'Valor Conversión Compras','AF') || cf(r,'Ventas','AF'));
+    g['Mensajes']       += n(cf(r,'Mensajes','AL'));
+    g['Leads']          += n(cf(r,'Leads','AM'));
+    g['Video50']        += ni(cf(r,'Video 50%','AI'));
+    g['Video75']        += ni(cf(r,'Video 75%','AJ'));
+    g['Video100']       += ni(cf(r,'Video 100%','AK'));
+    g['_rows']++;
+    // Estado: si alguna fila está ACTIVE, el anuncio está activo
+    if ((cf(r,'Estado','L')||cf(r,'Entrega','J')||'').toUpperCase() === 'ACTIVE') g['Estado'] = 'ACTIVE';
+    // Miniatura: tomar la primera no-vacía
+    if (!g['Miniatura']) g['Miniatura'] = cf(r,'Miniatura','AN');
   });
   // Recalcular métricas derivadas
   map.forEach(g => {
-    g['CPM']           = g['Impresiones'] > 0 ? g['Gasto'] / g['Impresiones'] * 1000 : 0;
-    g['CPC']           = g['Clics']       > 0 ? g['Gasto'] / g['Clics']       : 0;
-    g['CPL']           = g['Leads']       > 0 ? g['Gasto'] / g['Leads']       : 0;
-    g['Costo/Mensaje'] = g['Mensajes']    > 0 ? g['Gasto'] / g['Mensajes']    : 0;
+    g['CPM']              = g['Impresiones']    > 0 ? g['Gasto'] / g['Impresiones'] * 1000 : 0;
+    g['CPC']              = g['Clics']          > 0 ? g['Gasto'] / g['Clics']              : 0;
+    g['CPL']              = g['Leads']          > 0 ? g['Gasto'] / g['Leads']              : 0;
+    g['Costo/Mensaje']    = g['Mensajes']       > 0 ? g['Gasto'] / g['Mensajes']           : 0;
+    g['CostoPorVisita']   = g['Visitas']        > 0 ? g['Gasto'] / g['Visitas']            : 0;
+    g['CostoPorCompra']   = g['Compras']        > 0 ? g['Gasto'] / g['Compras']            : 0;
+    g['CostoPorResultado']= g['Resultados']     > 0 ? g['Gasto'] / g['Resultados']         : 0;
+    g['ROAS']             = g['Gasto']          > 0 ? g['ValorConversion'] / g['Gasto']    : 0;
+    g['PctVisitas']       = g['Clics']          > 0 ? g['Visitas'] / g['Clics']            : 0;
+    g['PctPersuasion']    = g['Visitas']        > 0 ? g['PagosIniciados'] / g['Visitas']   : 0;
+    g['PctConversion']    = g['Visitas']        > 0 ? g['Compras'] / g['Visitas']          : 0;
+    // Retrocompatibilidad: alias para código antiguo
+    g['Ventas']           = g['Compras'];
   });
   return [...map.values()];
 }
@@ -794,16 +830,16 @@ function groupByAnuncio(rows) {
 // ---------- AGREGAR DATOS ----------
 function kpis() {
   const rows = DATA.anuncios;
-  const gastoTotal    = rows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-  const impresTotal   = rows.reduce((s,r) => s + ni(colField(r,'Impresiones','M')), 0);
-  const alcanceTotal  = rows.reduce((s,r) => s + ni(colField(r,'Alcance','N')), 0);
-  const clicsTotal    = rows.reduce((s,r) => s + ni(colField(r,'Clics','P')), 0);
-  const ventasTotal   = rows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-  const mensajesTotal = rows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
-  const leadsTotal    = rows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
+  const grouped       = groupByAnuncio(rows);
+  const gastoTotal    = grouped.reduce((s,g) => s + g['Gasto'], 0);
+  const impresTotal   = grouped.reduce((s,g) => s + g['Impresiones'], 0);
+  const alcanceTotal  = grouped.reduce((s,g) => s + g['Alcance'], 0);
+  const clicsTotal    = grouped.reduce((s,g) => s + g['Clics'], 0);
+  const ventasTotal   = grouped.reduce((s,g) => s + g['Compras'], 0);
+  const mensajesTotal = grouped.reduce((s,g) => s + g['Mensajes'], 0);
+  const leadsTotal    = grouped.reduce((s,g) => s + g['Leads'], 0);
   const cpmProm       = impresTotal > 0 ? (gastoTotal / impresTotal * 1000) : 0;
   const cpcProm       = clicsTotal > 0 ? (gastoTotal / clicsTotal) : 0;
-  const grouped       = groupByAnuncio(rows);
   const adCount       = grouped.length;
   const activos       = grouped.filter(g => (g['Estado']||'').toUpperCase() === 'ACTIVE').length;
 
@@ -915,18 +951,19 @@ function renderVendedor() {
 
   responsables.forEach(resp => {
     const rRows = rows.filter(r => colField(r,'Responsable','E') === resp);
-    const gastoResp  = rRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-    const ventasResp = rRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-    const msj        = rRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
-    const leads      = rRows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
-    const impres     = rRows.reduce((s,r) => s + ni(colField(r,'Impresiones','M')), 0);
-    const clics      = rRows.reduce((s,r) => s + ni(colField(r,'Clics','P')), 0);
+    const rGrp2      = groupByAnuncio(rRows);
+    const gastoResp  = rGrp2.reduce((s,g) => s + g['Gasto'], 0);
+    const ventasResp = rGrp2.reduce((s,g) => s + g['Compras'], 0);
+    const msj        = rGrp2.reduce((s,g) => s + g['Mensajes'], 0);
+    const leads      = rGrp2.reduce((s,g) => s + g['Leads'], 0);
+    const impres     = rGrp2.reduce((s,g) => s + g['Impresiones'], 0);
+    const clics      = rGrp2.reduce((s,g) => s + g['Clics'], 0);
     const cpm        = impres > 0 ? gastoResp/impres*1000 : 0;
     const cpc        = clics  > 0 ? gastoResp/clics : 0;
     const cpl        = leads  > 0 ? gastoResp/leads : 0;
     const cMsg       = msj    > 0 ? gastoResp/msj   : 0;
 
-    const rGrp = groupByAnuncio(rRows);
+    const rGrp = rGrp2;
     html += `<div style="margin-bottom:20px">
       <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--v)">
         👤 ${resp}
@@ -956,11 +993,12 @@ function renderVendedor() {
         </tr></thead><tbody>`;
       campanas.forEach(camp => {
         const cRows = rRows.filter(r => colField(r,'Campaña','H') === camp);
-        const cG = cRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-        const cV = cRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-        const cM = cRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
-        const cL = cRows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
-        const cI = cRows.reduce((s,r) => s + ni(colField(r,'Impresiones','M')), 0);
+        const cGrpV = groupByAnuncio(cRows);
+        const cG = cGrpV.reduce((s,g) => s + g['Gasto'], 0);
+        const cV = cGrpV.reduce((s,g) => s + g['Compras'], 0);
+        const cM = cGrpV.reduce((s,g) => s + g['Mensajes'], 0);
+        const cL = cGrpV.reduce((s,g) => s + g['Leads'], 0);
+        const cI = cGrpV.reduce((s,g) => s + g['Impresiones'], 0);
         html += `<tr>
           <td>${camp}</td>
           <td>${pesos(cG)}</td>
@@ -1008,7 +1046,7 @@ function filtrarAnuncios() {
   const resultado = q ? base.filter(r => {
     const codigo = (colField(r,'Código Anuncio','F') || '').toLowerCase();
     const camp   = (colField(r,'Campaña','H') || '').toLowerCase();
-    const conj   = (colField(r,'Conjunto','G') || '').toLowerCase();
+    const conj   = (colField(r,'Conjunto de Anuncios','I') || colField(r,'Conjunto','I') || '').toLowerCase();
     return codigo.includes(q) || camp.includes(q) || conj.includes(q);
   }) : base;
 
@@ -1022,22 +1060,23 @@ function renderTablaAnuncios(rows) {
     return;
   }
   const html = rows.map(r => {
-    const thumb = r['Miniatura'] || colField(r,'Miniatura','X');
+    const thumb = r['Miniatura'] || colField(r,'Miniatura','AN');
     const codigo  = r['Código Anuncio'] || colField(r,'Código Anuncio','F') || '—';
-    const conj    = r['Conjunto'] || colField(r,'Conjunto','G') || '—';
+    const conj    = r['Conjunto'] || colField(r,'Conjunto de Anuncios','I') || '—';
     const camp    = r['Campaña'] || colField(r,'Campaña','H') || '—';
-    const estado  = r['Estado'] || colField(r,'Estado','J') || '';
-    const gasto   = n(r['Gasto'] ?? colField(r,'Gasto','K'));
-    const impres  = ni(r['Impresiones'] ?? colField(r,'Impresiones','M'));
-    const clics   = ni(r['Clics'] ?? colField(r,'Clics','P'));
-    const ventas  = n(r['Ventas'] ?? colField(r,'Ventas','Q'));
-    const msj     = n(r['Mensajes'] ?? colField(r,'Mensajes','R'));
-    const leads   = n(r['Leads'] ?? colField(r,'Leads','S'));
+    const estado  = r['Estado'] || colField(r,'Estado','L') || '';
+    const gasto   = n(r['Gasto'] ?? colField(r,'Importe Gastado','R'));
+    const impres  = ni(r['Impresiones'] ?? colField(r,'Impresiones','N'));
+    const clics   = ni(r['Clics'] ?? colField(r,'Clics en el Enlace','S'));
+    const ventas  = n(r['Compras'] ?? r['Ventas'] ?? colField(r,'Compras','AD'));
+    const msj     = n(r['Mensajes'] ?? colField(r,'Mensajes','AL'));
+    const leads   = n(r['Leads'] ?? colField(r,'Leads','AM'));
+    const visitas = ni(r['Visitas'] ?? colField(r,'Visitas Página Destino','X'));
+    const roasVal = n(r['ROAS'] ?? 0);
     const cpm     = n(r['CPM'] ?? (impres > 0 ? gasto/impres*1000 : 0));
     const cpc     = n(r['CPC'] ?? (clics > 0 ? gasto/clics : 0));
     const cpl     = n(r['CPL'] ?? (leads > 0 ? gasto/leads : 0));
     const cMsg    = n(r['Costo/Mensaje'] ?? (msj > 0 ? gasto/msj : 0));
-    const roasVal = ventas > 0 ? roas(ventas * gasto, gasto) : 0; // placeholder — ROAS real necesita ingresos
     const thumbEl = thumb
       ? `<img class="ad-thumb" src="${thumb}" onerror="this.style.display='none'" />`
       : `<div class="ad-thumb-placeholder">🖼️</div>`;
@@ -1296,9 +1335,10 @@ function renderProyeccion() {
       <tbody>`;
     clientes.forEach(cli => {
       const cRows = rows.filter(r => colField(r,'Cliente','D') === cli);
-      const cG = cRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-      const cV = cRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-      const cM = cRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
+      const cGrpR = groupByAnuncio(cRows);
+      const cG = cGrpR.reduce((s,g) => s + g['Gasto'], 0);
+      const cV = cGrpR.reduce((s,g) => s + g['Compras'], 0);
+      const cM = cGrpR.reduce((s,g) => s + g['Mensajes'], 0);
       html += `<tr>
         <td><strong>${cli}</strong></td>
         <td>${pesos(cG)}</td>
