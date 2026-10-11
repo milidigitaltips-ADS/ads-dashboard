@@ -752,6 +752,45 @@ function colField(row, ...candidates) {
   return '';
 }
 
+// Agrupa filas por Código Anuncio y suma métricas numéricas
+function groupByAnuncio(rows) {
+  const map = new Map();
+  rows.forEach(r => {
+    const key = colField(r,'Código Anuncio','F') || '(sin código)';
+    if (!map.has(key)) {
+      map.set(key, {
+        'Código Anuncio': key,
+        'Cliente':        colField(r,'Cliente','D'),
+        'Responsable':    colField(r,'Responsable','E'),
+        'Conjunto':       colField(r,'Conjunto','G'),
+        'Campaña':        colField(r,'Campaña','H'),
+        'Estado':         colField(r,'Estado','J'),
+        'Miniatura':      colField(r,'Miniatura','X'),
+        'Gasto':       0, 'Impresiones': 0, 'Alcance': 0,
+        'Clics':       0, 'Ventas': 0,      'Mensajes': 0, 'Leads': 0,
+      });
+    }
+    const g = map.get(key);
+    g['Gasto']        += n(colField(r,'Gasto','K'));
+    g['Impresiones']  += ni(colField(r,'Impresiones','M'));
+    g['Alcance']      += ni(colField(r,'Alcance','N'));
+    g['Clics']        += ni(colField(r,'Clics','P'));
+    g['Ventas']       += n(colField(r,'Ventas','Q'));
+    g['Mensajes']     += n(colField(r,'Mensajes','R'));
+    g['Leads']        += n(colField(r,'Leads','S'));
+    // Actualizar estado: si alguna fila está ACTIVE, el anuncio está activo
+    if ((colField(r,'Estado','J')||'').toUpperCase() === 'ACTIVE') g['Estado'] = 'ACTIVE';
+  });
+  // Recalcular métricas derivadas
+  map.forEach(g => {
+    g['CPM']           = g['Impresiones'] > 0 ? g['Gasto'] / g['Impresiones'] * 1000 : 0;
+    g['CPC']           = g['Clics']       > 0 ? g['Gasto'] / g['Clics']       : 0;
+    g['CPL']           = g['Leads']       > 0 ? g['Gasto'] / g['Leads']       : 0;
+    g['Costo/Mensaje'] = g['Mensajes']    > 0 ? g['Gasto'] / g['Mensajes']    : 0;
+  });
+  return [...map.values()];
+}
+
 // ---------- AGREGAR DATOS ----------
 function kpis() {
   const rows = DATA.anuncios;
@@ -764,8 +803,9 @@ function kpis() {
   const leadsTotal    = rows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
   const cpmProm       = impresTotal > 0 ? (gastoTotal / impresTotal * 1000) : 0;
   const cpcProm       = clicsTotal > 0 ? (gastoTotal / clicsTotal) : 0;
-  const adCount       = rows.length;
-  const activos       = rows.filter(r => (colField(r,'Estado','J')||'').toUpperCase() === 'ACTIVE').length;
+  const grouped       = groupByAnuncio(rows);
+  const adCount       = grouped.length;
+  const activos       = grouped.filter(g => (g['Estado']||'').toUpperCase() === 'ACTIVE').length;
 
   return { gastoTotal, impresTotal, alcanceTotal, clicsTotal, ventasTotal,
            mensajesTotal, leadsTotal, cpmProm, cpcProm, adCount, activos };
@@ -822,16 +862,17 @@ function renderDashboard() {
     </div>
   </div>`;
 
-  // Top anuncios por gasto (mini)
+  // Top anuncios por gasto (mini) — agrupados por código
   html += `<div class="section-header"><span class="section-title" style="font-size:15px">🔥 Anuncios con Mayor Inversión</span></div>`;
-  const topG = [...rows].sort((a,b) => n(colField(b,'Gasto','K')) - n(colField(a,'Gasto','K'))).slice(0,5);
+  const grpRows = groupByAnuncio(rows);
+  const topG = [...grpRows].sort((a,b) => n(b['Gasto']) - n(a['Gasto'])).slice(0,5);
   if (topG.length) {
-    const maxG = n(colField(topG[0],'Gasto','K'));
+    const maxG = n(topG[0]['Gasto']);
     html += '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 20px">';
     topG.forEach((r,i) => {
-      const g = n(colField(r,'Gasto','K'));
+      const g = n(r['Gasto']);
       const pct = maxG > 0 ? (g/maxG*100) : 0;
-      const nombre = colField(r,'Código Anuncio','F') || colField(r,'ad_name') || '—';
+      const nombre = r['Código Anuncio'] || '—';
       html += `<div class="bar-row">
         <div class="bar-label" style="width:120px;text-align:left;font-size:11px" title="${nombre}">${nombre.substring(0,18)}${nombre.length>18?'…':''}</div>
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--v),var(--c))"></div></div>
@@ -847,14 +888,15 @@ function renderDashboard() {
     <div class="section-header"><span class="section-title" style="font-size:15px">🏢 Por Cliente / Cuenta</span></div>
     <div class="cards cards-3">`;
     clientes.forEach(cli => {
-      const cRows = rows.filter(r => colField(r,'Cliente','D') === cli);
-      const cGasto = cRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-      const cVentas = cRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-      const cMsj = cRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
+      const cRaw = rows.filter(r => colField(r,'Cliente','D') === cli);
+      const cGrp = groupByAnuncio(cRaw);
+      const cGasto = cGrp.reduce((s,g) => s + n(g['Gasto']), 0);
+      const cVentas = cGrp.reduce((s,g) => s + n(g['Ventas']), 0);
+      const cMsj = cGrp.reduce((s,g) => s + n(g['Mensajes']), 0);
       html += `<div class="kpi-card">
         <div class="kpi-label">${cli}</div>
         <div class="kpi-value purple" style="font-size:22px">${pesos(cGasto)}</div>
-        <div class="kpi-sub">${num(cVentas)} ventas · ${num(cMsj)} mensajes · ${cRows.length} ads</div>
+        <div class="kpi-sub">${num(cVentas)} ventas · ${num(cMsj)} mensajes · ${cGrp.length} ads</div>
       </div>`;
     });
     html += '</div>';
@@ -884,10 +926,11 @@ function renderVendedor() {
     const cpl        = leads  > 0 ? gastoResp/leads : 0;
     const cMsg       = msj    > 0 ? gastoResp/msj   : 0;
 
+    const rGrp = groupByAnuncio(rRows);
     html += `<div style="margin-bottom:20px">
       <div style="font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--v)">
         👤 ${resp}
-        <span style="font-size:12px;color:var(--fg2);font-weight:400;margin-left:8px">${rRows.length} anuncios</span>
+        <span style="font-size:12px;color:var(--fg2);font-weight:400;margin-left:8px">${rGrp.length} anuncios</span>
       </div>
       <div class="cards cards-4" style="margin-bottom:12px">
         <div class="kpi-card"><div class="kpi-label">Gasto</div><div class="kpi-value purple" style="font-size:20px">${pesos(gastoResp)}</div></div>
@@ -937,7 +980,7 @@ function renderVendedor() {
 
 // ---------- RENDER ANUNCIOS ----------
 function renderAnuncios() {
-  FILTERED = [...DATA.anuncios];
+  FILTERED = groupByAnuncio(DATA.anuncios);
   document.getElementById('anunciosSub').textContent = FILTERED.length + ' anuncios';
 
   // Filtros por cliente
@@ -954,7 +997,8 @@ function renderAnuncios() {
 function filtrarPorCliente(btn, cliente) {
   document.querySelectorAll('#anunciosFiltros .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  FILTERED = cliente ? DATA.anuncios.filter(r => colField(r,'Cliente','D') === cliente) : [...DATA.anuncios];
+  const base = cliente ? DATA.anuncios.filter(r => colField(r,'Cliente','D') === cliente) : DATA.anuncios;
+  FILTERED = groupByAnuncio(base);
   filtrarAnuncios();
 }
 
@@ -978,21 +1022,21 @@ function renderTablaAnuncios(rows) {
     return;
   }
   const html = rows.map(r => {
-    const thumb = colField(r,'Miniatura','X');
-    const codigo  = colField(r,'Código Anuncio','F') || '—';
-    const conj    = colField(r,'Conjunto','G') || '—';
-    const camp    = colField(r,'Campaña','H') || '—';
-    const estado  = colField(r,'Estado','J') || '';
-    const gasto   = n(colField(r,'Gasto','K'));
-    const impres  = ni(colField(r,'Impresiones','M'));
-    const clics   = ni(colField(r,'Clics','P'));
-    const ventas  = n(colField(r,'Ventas','Q'));
-    const msj     = n(colField(r,'Mensajes','R'));
-    const leads   = n(colField(r,'Leads','S'));
-    const cpm     = n(colField(r,'CPM','T'));
-    const cpc     = n(colField(r,'CPC','U'));
-    const cpl     = n(colField(r,'CPL','V'));
-    const cMsg    = n(colField(r,'Costo/Mensaje','W'));
+    const thumb = r['Miniatura'] || colField(r,'Miniatura','X');
+    const codigo  = r['Código Anuncio'] || colField(r,'Código Anuncio','F') || '—';
+    const conj    = r['Conjunto'] || colField(r,'Conjunto','G') || '—';
+    const camp    = r['Campaña'] || colField(r,'Campaña','H') || '—';
+    const estado  = r['Estado'] || colField(r,'Estado','J') || '';
+    const gasto   = n(r['Gasto'] ?? colField(r,'Gasto','K'));
+    const impres  = ni(r['Impresiones'] ?? colField(r,'Impresiones','M'));
+    const clics   = ni(r['Clics'] ?? colField(r,'Clics','P'));
+    const ventas  = n(r['Ventas'] ?? colField(r,'Ventas','Q'));
+    const msj     = n(r['Mensajes'] ?? colField(r,'Mensajes','R'));
+    const leads   = n(r['Leads'] ?? colField(r,'Leads','S'));
+    const cpm     = n(r['CPM'] ?? (impres > 0 ? gasto/impres*1000 : 0));
+    const cpc     = n(r['CPC'] ?? (clics > 0 ? gasto/clics : 0));
+    const cpl     = n(r['CPL'] ?? (leads > 0 ? gasto/leads : 0));
+    const cMsg    = n(r['Costo/Mensaje'] ?? (msj > 0 ? gasto/msj : 0));
     const roasVal = ventas > 0 ? roas(ventas * gasto, gasto) : 0; // placeholder — ROAS real necesita ingresos
     const thumbEl = thumb
       ? `<img class="ad-thumb" src="${thumb}" onerror="this.style.display='none'" />`
@@ -1022,14 +1066,24 @@ function renderTablaAnuncios(rows) {
 
 // ---------- RENDER TOP 5 ----------
 function renderTop5() {
-  const rows = DATA.anuncios;
-  document.getElementById('top5Sub').textContent = rows.length + ' anuncios analizados';
+  const grp = groupByAnuncio(DATA.anuncios);
+  document.getElementById('top5Sub').textContent = grp.length + ' anuncios analizados';
 
-  function renderTopList(containerId, items, valueKey, formatter, labelKey='Código Anuncio') {
+  const topGasto   = [...grp].sort((a,b) => n(b['Gasto'])    - n(a['Gasto'])).slice(0,5);
+  const topVentas  = [...grp].sort((a,b) => n(b['Ventas'])   - n(a['Ventas'])).slice(0,5);
+  const topMsj     = [...grp].sort((a,b) => n(b['Mensajes']) - n(a['Mensajes'])).slice(0,5);
+  const topAlc     = [...grp].sort((a,b) => n(b['Alcance'])  - n(a['Alcance'])).slice(0,5);
+  const topLeads   = [...grp].sort((a,b) => n(b['Leads'])    - n(a['Leads'])).slice(0,5);
+  const topRoasArr = [...grp]
+    .filter(r => n(r['Ventas']) > 0 && n(r['Gasto']) > 0)
+    .sort((a,b) => (n(b['Ventas'])/n(b['Gasto'])) - (n(a['Ventas'])/n(a['Gasto'])))
+    .slice(0,5);
+
+  function renderTopList(containerId, items, valueKey, formatter) {
     const html = items.map((r, i) => {
-      const nombre = colField(r, labelKey, 'F') || '—';
-      const valor  = n(colField(r, valueKey));
-      const camp   = colField(r, 'Campaña', 'H') || '';
+      const nombre = r['Código Anuncio'] || '—';
+      const valor  = n(r[valueKey]);
+      const camp   = r['Campaña'] || '';
       return `<div class="top-item">
         <div class="top-rank rank-${i+1}">${i+1}</div>
         <div class="top-info">
@@ -1042,31 +1096,17 @@ function renderTop5() {
     document.getElementById(containerId).innerHTML = html;
   }
 
-  const topGasto   = [...rows].sort((a,b) => n(colField(b,'Gasto','K')) - n(colField(a,'Gasto','K'))).slice(0,5);
-  const topVentas  = [...rows].sort((a,b) => n(colField(b,'Ventas','Q')) - n(colField(a,'Ventas','Q'))).slice(0,5);
-  const topMsj     = [...rows].sort((a,b) => n(colField(b,'Mensajes','R')) - n(colField(a,'Mensajes','R'))).slice(0,5);
-  const topAlc     = [...rows].sort((a,b) => ni(colField(b,'Alcance','N')) - ni(colField(a,'Alcance','N'))).slice(0,5);
-  const topLeads   = [...rows].sort((a,b) => n(colField(b,'Leads','S')) - n(colField(a,'Leads','S'))).slice(0,5);
-  // ROAS aproximado (ventas*ticket/gasto) — cuando tengas ingresos reales cámbialo
-  const topRoasArr = [...rows]
-    .filter(r => n(colField(r,'Ventas','Q')) > 0 && n(colField(r,'Gasto','K')) > 0)
-    .sort((a,b) => {
-      const ra = n(colField(a,'Ventas','Q')) / n(colField(a,'Gasto','K'));
-      const rb = n(colField(b,'Ventas','Q')) / n(colField(b,'Gasto','K'));
-      return rb - ra;
-    }).slice(0,5);
-
-  renderTopList('topGasto',   topGasto,   'Gasto',    pesos,      'Código Anuncio');
-  renderTopList('topVentas',  topVentas,  'Ventas',   v => num(v) + ' ventas', 'Código Anuncio');
-  renderTopList('topMensajes',topMsj,     'Mensajes', v => num(v) + ' msj',   'Código Anuncio');
-  renderTopList('topAlcance', topAlc,     'Alcance',  v => num(v) + ' pers.', 'Código Anuncio');
-  renderTopList('topLeads',   topLeads,   'Leads',    v => num(v) + ' leads', 'Código Anuncio');
+  renderTopList('topGasto',    topGasto,   'Gasto',    pesos);
+  renderTopList('topVentas',   topVentas,  'Ventas',   v => num(v) + ' ventas');
+  renderTopList('topMensajes', topMsj,     'Mensajes', v => num(v) + ' msj');
+  renderTopList('topAlcance',  topAlc,     'Alcance',  v => num(v) + ' pers.');
+  renderTopList('topLeads',    topLeads,   'Leads',    v => num(v) + ' leads');
 
   // Top ROAS custom
   const roasHtml = topRoasArr.map((r, i) => {
-    const nombre = colField(r, 'Código Anuncio', 'F') || '—';
-    const v = n(colField(r,'Ventas','Q'));
-    const g = n(colField(r,'Gasto','K'));
+    const nombre = r['Código Anuncio'] || '—';
+    const v = n(r['Ventas']);
+    const g = n(r['Gasto']);
     const rv = v / g;
     return `<div class="top-item">
       <div class="top-rank rank-${i+1}">${i+1}</div>
@@ -1126,31 +1166,70 @@ function renderResumen() {
 
   </div>`;
 
-  // Tabla por campaña
+  // Datos agrupados para gráficas
+  const grpAll = groupByAnuncio(rows);
+
+  // Gráfica: Gasto por Campaña (barras horizontales)
+  const campData = campanas.map(camp => {
+    const cRows = rows.filter(r => colField(r,'Campaña','H') === camp);
+    const cGrp  = groupByAnuncio(cRows);
+    return {
+      camp,
+      ads: cGrp.length,
+      gasto: cGrp.reduce((s,g) => s + n(g['Gasto']), 0),
+      impres: cGrp.reduce((s,g) => s + ni(g['Impresiones']), 0),
+      clics: cGrp.reduce((s,g) => s + ni(g['Clics']), 0),
+      ventas: cGrp.reduce((s,g) => s + n(g['Ventas']), 0),
+      mensajes: cGrp.reduce((s,g) => s + n(g['Mensajes']), 0),
+      leads: cGrp.reduce((s,g) => s + n(g['Leads']), 0),
+    };
+  }).sort((a,b) => b.gasto - a.gasto);
+
+  const maxGastoCamp = campData[0]?.gasto || 1;
+  const maxMsjCamp = Math.max(...campData.map(c => c.mensajes)) || 1;
+
   html += `<div class="divider"></div>
-  <div class="table-wrap">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;margin-bottom:14px;color:var(--fg)">💸 Gasto por Campaña</div>
+      ${campData.map(c => `
+      <div class="bar-row">
+        <div class="bar-label" style="width:140px;font-size:11px;text-align:left" title="${c.camp}">${c.camp.substring(0,20)}${c.camp.length>20?'…':''}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(c.gasto/maxGastoCamp*100).toFixed(1)}%;background:linear-gradient(90deg,var(--v),var(--c))"></div></div>
+        <div class="bar-amount" style="color:var(--vl)">${pesos(c.gasto)}</div>
+      </div>`).join('')}
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;margin-bottom:14px;color:var(--fg)">💬 Mensajes por Campaña</div>
+      ${campData.map(c => `
+      <div class="bar-row">
+        <div class="bar-label" style="width:140px;font-size:11px;text-align:left" title="${c.camp}">${c.camp.substring(0,20)}${c.camp.length>20?'…':''}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(c.mensajes/maxMsjCamp*100).toFixed(1)}%;background:linear-gradient(90deg,var(--c),#22d3ee)"></div></div>
+        <div class="bar-amount" style="color:var(--c)">${num(c.mensajes)}</div>
+      </div>`).join('')}
+    </div>
+
+  </div>`;
+
+  // Tabla por campaña
+  html += `<div class="table-wrap">
     <div class="table-header"><span class="table-title">Desglose por Campaña</span></div>
     <div class="table-scroll"><table>
-      <thead><tr><th>Campaña</th><th>Ads</th><th>Gasto</th><th>Impres.</th><th>Clics</th><th>Ventas</th><th>Mensajes</th><th>Leads</th><th>CPM</th></tr></thead>
+      <thead><tr><th>Campaña</th><th>Ads únicos</th><th>Gasto</th><th>Impres.</th><th>Clics</th><th>Ventas</th><th>Mensajes</th><th>Leads</th><th>CPM</th></tr></thead>
       <tbody>`;
-  campanas.forEach(camp => {
-    const cRows = rows.filter(r => colField(r,'Campaña','H') === camp);
-    const cG = cRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-    const cI = cRows.reduce((s,r) => s + ni(colField(r,'Impresiones','M')), 0);
-    const cC = cRows.reduce((s,r) => s + ni(colField(r,'Clics','P')), 0);
-    const cV = cRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-    const cM = cRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
-    const cL = cRows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
+  campData.forEach(c => {
     html += `<tr>
-      <td><strong>${camp}</strong></td>
-      <td>${cRows.length}</td>
-      <td>${pesos(cG)}</td>
-      <td>${num(cI)}</td>
-      <td>${num(cC)}</td>
-      <td>${cV>0?'<span class="num-pos">'+num(cV)+'</span>':'0'}</td>
-      <td>${num(cM)}</td>
-      <td>${num(cL)}</td>
-      <td>${cI>0?pesos(cG/cI*1000,2):'—'}</td>
+      <td><strong>${c.camp}</strong></td>
+      <td>${c.ads}</td>
+      <td>${pesos(c.gasto)}</td>
+      <td>${num(c.impres)}</td>
+      <td>${num(c.clics)}</td>
+      <td>${c.ventas>0?'<span class="num-pos">'+num(c.ventas)+'</span>':'0'}</td>
+      <td>${num(c.mensajes)}</td>
+      <td>${num(c.leads)}</td>
+      <td>${c.impres>0?pesos(c.gasto/c.impres*1000,2):'—'}</td>
     </tr>`;
   });
   html += '</tbody></table></div></div>';
@@ -1330,22 +1409,48 @@ function renderReportes() {
   let html = '';
   clientes.forEach(cli => {
     const cRows = rows.filter(r => colField(r,'Cliente','D') === cli);
-    const cG = cRows.reduce((s,r) => s + n(colField(r,'Gasto','K')), 0);
-    const cI = cRows.reduce((s,r) => s + ni(colField(r,'Impresiones','M')), 0);
-    const cAl = cRows.reduce((s,r) => s + ni(colField(r,'Alcance','N')), 0);
-    const cCl = cRows.reduce((s,r) => s + ni(colField(r,'Clics','P')), 0);
-    const cV = cRows.reduce((s,r) => s + n(colField(r,'Ventas','Q')), 0);
-    const cM = cRows.reduce((s,r) => s + n(colField(r,'Mensajes','R')), 0);
-    const cL = cRows.reduce((s,r) => s + n(colField(r,'Leads','S')), 0);
+    const cGrp  = groupByAnuncio(cRows).sort((a,b) => n(b['Gasto']) - n(a['Gasto']));
+    const cG  = cGrp.reduce((s,g) => s + n(g['Gasto']), 0);
+    const cI  = cGrp.reduce((s,g) => s + ni(g['Impresiones']), 0);
+    const cAl = cGrp.reduce((s,g) => s + ni(g['Alcance']), 0);
+    const cCl = cGrp.reduce((s,g) => s + ni(g['Clics']), 0);
+    const cV  = cGrp.reduce((s,g) => s + n(g['Ventas']), 0);
+    const cM  = cGrp.reduce((s,g) => s + n(g['Mensajes']), 0);
+    const cL  = cGrp.reduce((s,g) => s + n(g['Leads']), 0);
     const resp = [...new Set(cRows.map(r => colField(r,'Responsable','E')).filter(Boolean))].join(', ');
+    const activos = cGrp.filter(g => (g['Estado']||'').toUpperCase() === 'ACTIVE').length;
 
-    const activos = cRows.filter(r => (colField(r,'Estado','J')||'').toUpperCase() === 'ACTIVE').length;
+    // Gráficas de barras horizontales
+    const maxG  = n(cGrp[0]?.['Gasto']) || 1;
+    const maxM  = Math.max(...cGrp.map(g => n(g['Mensajes']))) || 1;
+    const top8  = cGrp.slice(0,8);
+    const top8M = [...cGrp].sort((a,b) => n(b['Mensajes']) - n(a['Mensajes'])).slice(0,8);
+
+    const barrasGasto = top8.map(g => {
+      const pct = (n(g['Gasto']) / maxG * 100).toFixed(1);
+      const nom = (g['Código Anuncio']||'—').substring(0,22);
+      return `<div class="bar-row">
+        <div class="bar-label" style="width:150px;font-size:11px;text-align:left" title="${g['Código Anuncio']}">${nom}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--v),var(--c))"></div></div>
+        <div class="bar-amount" style="color:var(--vl)">${pesos(n(g['Gasto']))}</div>
+      </div>`;
+    }).join('');
+
+    const barrasMsj = top8M.map(g => {
+      const pct = (n(g['Mensajes']) / maxM * 100).toFixed(1);
+      const nom = (g['Código Anuncio']||'—').substring(0,22);
+      return `<div class="bar-row">
+        <div class="bar-label" style="width:150px;font-size:11px;text-align:left" title="${g['Código Anuncio']}">${nom}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:linear-gradient(90deg,var(--c),#22d3ee)"></div></div>
+        <div class="bar-amount" style="color:var(--c)">${num(n(g['Mensajes']))}</div>
+      </div>`;
+    }).join('');
 
     html += `<div class="report-card">
       <div class="report-header">
         <div>
           <div class="report-title">📄 Reporte — ${cli}</div>
-          <div class="report-date">Responsable: ${resp || '—'} · ${cRows.length} anuncios (${activos} activos)</div>
+          <div class="report-date">Responsable: ${resp || '—'} · ${cGrp.length} anuncios únicos (${activos} activos)</div>
         </div>
         <button class="config-btn" onclick="imprimirReporte('${cli}')" style="font-size:12px">🖨️ Imprimir</button>
       </div>
@@ -1356,27 +1461,39 @@ function renderReportes() {
         <div class="kpi-card"><div class="kpi-label">Impresiones</div><div class="kpi-value" style="font-size:20px">${num(cI)}</div></div>
       </div>
 
-      <div class="cards cards-4" style="margin-bottom:14px">
+      <div class="cards cards-4" style="margin-bottom:18px">
         <div class="kpi-card"><div class="kpi-label">Clics</div><div class="kpi-value yellow" style="font-size:18px">${num(cCl)}</div><div class="kpi-sub">CPC ${pesos(cCl>0?cG/cCl:0,2)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Ventas</div><div class="kpi-value green" style="font-size:18px">${num(cV)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Mensajes</div><div class="kpi-value cyan" style="font-size:18px">${num(cM)}</div><div class="kpi-sub">Cto ${pesos(cM>0?cG/cM:0,2)}</div></div>
         <div class="kpi-card"><div class="kpi-label">Leads</div><div class="kpi-value yellow" style="font-size:18px">${num(cL)}</div><div class="kpi-sub">CPL ${pesos(cL>0?cG/cL:0,2)}</div></div>
       </div>
 
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--fg)">💸 Inversión por Anuncio</div>
+          ${barrasGasto || '<div style="color:var(--fg3);font-size:12px">Sin datos</div>'}
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--fg)">💬 Mensajes por Anuncio</div>
+          ${barrasMsj || '<div style="color:var(--fg3);font-size:12px">Sin datos</div>'}
+        </div>
+      </div>
+
       <div class="table-wrap">
-        <div class="table-header"><span class="table-title" style="font-size:13px">Top Anuncios</span></div>
+        <div class="table-header"><span class="table-title" style="font-size:13px">Todos los Anuncios (agrupados)</span></div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Anuncio</th><th>Estado</th><th>Gasto</th><th>Alcance</th><th>Clics</th><th>Ventas</th><th>Mensajes</th></tr></thead>
+          <thead><tr><th>Anuncio</th><th>Estado</th><th>Gasto</th><th>Alcance</th><th>Clics</th><th>Ventas</th><th>Mensajes</th><th>Leads</th></tr></thead>
           <tbody>
-            ${[...cRows].sort((a,b)=>n(colField(b,'Gasto','K'))-n(colField(a,'Gasto','K'))).slice(0,10).map(r=>`
+            ${cGrp.map(g=>`
             <tr>
-              <td><strong>${(colField(r,'Código Anuncio','F')||'—').substring(0,22)}</strong></td>
-              <td>${statusBadge(colField(r,'Estado','J'))}</td>
-              <td>${pesos(n(colField(r,'Gasto','K')))}</td>
-              <td>${num(ni(colField(r,'Alcance','N')))}</td>
-              <td>${num(ni(colField(r,'Clics','P')))}</td>
-              <td>${num(n(colField(r,'Ventas','Q')))}</td>
-              <td>${num(n(colField(r,'Mensajes','R')))}</td>
+              <td><strong>${(g['Código Anuncio']||'—').substring(0,24)}</strong></td>
+              <td>${statusBadge(g['Estado'])}</td>
+              <td>${pesos(n(g['Gasto']))}</td>
+              <td>${num(ni(g['Alcance']))}</td>
+              <td>${num(ni(g['Clics']))}</td>
+              <td>${n(g['Ventas'])>0?'<span class="num-pos">'+num(n(g['Ventas']))+'</span>':'0'}</td>
+              <td>${num(n(g['Mensajes']))}</td>
+              <td>${num(n(g['Leads']))}</td>
             </tr>`).join('')}
           </tbody>
         </table></div>
