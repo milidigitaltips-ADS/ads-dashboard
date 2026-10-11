@@ -522,9 +522,13 @@ main { flex: 1; overflow-y: auto; padding: 20px; }
 // ---------- CONFIG ----------
 const CONFIG_KEY = 'mili_os_config';
 // URLs hardcodeadas del Sheet de Mili Digital Tips OS
-// ID real del spreadsheet (de la URL /d/ESTE_ID/)
-const SHEET_ID_REAL = '1ThqlXcmExFC07iO7jwQxeZ6mw7yHwKVDedpvcandGeg';
-const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID_REAL}/gviz/tq?tqx=out:csv`;
+const SHEET_ID_PUBLICADO = '2PACX-1vRhhHfr0ByI175iEeIFsswJZJxzrRooEvdElgj8cMIutRSdr2pZOHR_vIHYjoXtRyhys0JwgSt_ZviK';
+// GIDs de cada pestaña (del parámetro #gid= en la URL de Google Sheets)
+const SHEET_GIDS = {
+  anuncios:    '750518865',
+  presupuesto: '1696674877'
+};
+const DEFAULT_SHEET_URL = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv`;
 let CONFIG = { sheetUrl: DEFAULT_SHEET_URL };
 let DATA = { anuncios: [], presupuesto: [] };
 let FILTERED = [];
@@ -628,25 +632,17 @@ async function cargarDatos() {
 }
 
 async function fetchSheet(sheetName) {
-  // Intentar construir URL para la pestaña específica
-  let url = CONFIG.sheetUrl;
+  // Mapear nombre de pestaña a GID
+  const gidMap = {
+    'Anuncios':        SHEET_GIDS.anuncios,
+    'Presupuesto Auto': SHEET_GIDS.presupuesto
+  };
+  const gid = gidMap[sheetName] || '0';
 
-  // Si la URL es del tipo gviz/tq, cambiar el parámetro sheet
-  if (url.includes('gviz/tq') || url.includes('gviz')) {
-    url = url.replace(/&sheet=[^&]*/g, '') + '&sheet=' + encodeURIComponent(sheetName);
-  } else if (url.includes('pub?output=csv')) {
-    // URL tipo "publicar en la web"
-    url = url.replace(/&gid=[^&]*/g, '') + '&sheet=' + encodeURIComponent(sheetName);
-  } else {
-    // URL base del spreadsheet — convertir a CSV
-    const match = url.match(/\/d\/([^/]+)/);
-    if (match) {
-      url = 'https://docs.google.com/spreadsheets/d/' + match[1] +
-            '/gviz/tq?tqx=out:csv&sheet=' + encodeURIComponent(sheetName);
-    }
-  }
+  // Construir URL usando el formato pub?output=csv&gid=GID (funciona con el ID publicado)
+  const base = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}`;
 
-  const resp = await fetch(url);
+  const resp = await fetch(base, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
   if (!resp.ok) throw new Error('HTTP ' + resp.status + ' al cargar ' + sheetName);
   const text = await resp.text();
   return parseCSV(text);
